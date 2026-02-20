@@ -1,6 +1,6 @@
 # PNG/JPEG/WEBP/AVIF Converter Context Menu Tool (Windows 11)
 
-Version: **0.2**
+Version: **0.2.1**
 
 Quick right-click transcoding with submenu actions:
 
@@ -135,6 +135,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\ConvertPngToJpg.ps1 -UseMa
 ```
 
 ## Release Notes
+
+### 0.2.1
+
+- Fixed VBS launcher host selection to avoid accidental double execution when a conversion run fails.
+- Added `-auto-orient` before metadata stripping in ImageMagick conversion paths (JPG/WebP/AVIF/PNG via Magick).
+- Improved `IfExists=Skip` behavior to recover from broken zero-byte outputs instead of skipping forever.
+- Added stale notification-state recovery with a single "possible interruption" completion popup.
+- Updated PowerShell launcher path to prefer `pwsh.exe` when available, with host fallback.
 
 ### 0.2
 

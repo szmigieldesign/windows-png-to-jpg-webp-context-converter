@@ -1,6 +1,6 @@
 Option Explicit
 
-Dim shell, fso, scriptDir, converterPath, args, i, hostCmd, cmd
+Dim shell, fso, scriptDir, converterPath, args, i, cmd, probeExit
 
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
@@ -17,11 +17,13 @@ For i = 0 To WScript.Arguments.Count - 1
     args = args & " " & QuoteArg(WScript.Arguments.Item(i))
 Next
 
-hostCmd = "where pwsh.exe >nul 2>nul && pwsh.exe -NoProfile -STA -ExecutionPolicy Bypass -File " & _
-    QuoteArg(converterPath) & args & _
-    " || powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File " & QuoteArg(converterPath) & args
+probeExit = shell.Run("cmd.exe /c where pwsh.exe >nul 2>nul", 0, True)
 
-cmd = "cmd.exe /c " & hostCmd
+If probeExit = 0 Then
+    cmd = "pwsh.exe -NoProfile -STA -ExecutionPolicy Bypass -File " & QuoteArg(converterPath) & args
+Else
+    cmd = "powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File " & QuoteArg(converterPath) & args
+End If
 
 ' Run hidden and do not wait, so no console windows flash.
 shell.Run cmd, 0, False

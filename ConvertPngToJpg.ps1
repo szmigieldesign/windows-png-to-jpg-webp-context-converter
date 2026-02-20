@@ -30,6 +30,7 @@ $notifyStatePath = Join-Path -Path $notifyStateDir -ChildPath "state.json"
 $notifyWorkerLockPath = Join-Path -Path $notifyStateDir -ChildPath "worker.lock"
 $notifyMutexName = "Local\ContextConverterPngToolNotify"
 $magickMissingStampPath = Join-Path -Path $notifyStateDir -ChildPath "magick-missing.stamp"
+$notifyStaleSeconds = 180
 
 function Write-RunLog {
     param(
@@ -298,6 +299,7 @@ function Run-NotificationWorker {
 
         $lock = Acquire-Mutex -Name $notifyMutexName
         $shouldNotify = $false
+        $staleBatch = $false
         $state = $null
         try {
             if (-not $lock.HasLock) {
@@ -310,13 +312,28 @@ function Run-NotificationWorker {
             }
 
             $state = Read-NotificationState
-            $last = [DateTime]::Parse(
-                $state.LastUpdateUtc,
-                [System.Globalization.CultureInfo]::InvariantCulture,
-                [System.Globalization.DateTimeStyles]::RoundtripKind
-            )
+            try {
+                $last = [DateTime]::Parse(
+                    $state.LastUpdateUtc,
+                    [System.Globalization.CultureInfo]::InvariantCulture,
+                    [System.Globalization.DateTimeStyles]::RoundtripKind
+                )
+            } catch {
+                $last = [DateTime]::UtcNow
+            }
             $quietSeconds = ((Get-Date).ToUniversalTime() - $last.ToUniversalTime()).TotalSeconds
-            if ([int]$state.Active -gt 0 -or $quietSeconds -lt 2) {
+            if ([int]$state.Active -gt 0) {
+                if ($quietSeconds -ge $notifyStaleSeconds) {
+                    $activeBefore = [int]$state.Active
+                    $staleBatch = $true
+                    $state.Active = 0
+                    Write-RunLog "Notification state marked stale after $([int]$quietSeconds)s with active=$activeBefore."
+                } else {
+                    continue
+                }
+            }
+
+            if (-not $staleBatch -and $quietSeconds -lt 2) {
                 continue
             }
 
@@ -328,7 +345,9 @@ function Run-NotificationWorker {
         }
 
         if ($shouldNotify -and $state) {
-            if ([int]$state.Failed -gt 0) {
+            if ($staleBatch) {
+                Show-Notification -Title "Image Converter" -Message "Done with possible interruption. Converted: $($state.Converted), Skipped: $($state.Skipped), Failed: $($state.Failed)"
+            } elseif ([int]$state.Failed -gt 0) {
                 Show-Notification -Title "Image Converter" -Message "Done with errors. Converted: $($state.Converted), Skipped: $($state.Skipped), Failed: $($state.Failed)"
             } elseif ([int]$state.Converted -gt 0) {
                 Show-Notification -Title "Image Converter" -Message "Done. Converted: $($state.Converted), Skipped: $($state.Skipped)"
@@ -472,6 +491,11 @@ function Resolve-OutputPath {
         return $candidate
     }
 
+    # Recover from broken partial outputs (e.g. zero-byte files).
+    if (-not (Test-OutputFileReady -Path $candidate)) {
+        return $candidate
+    }
+
     if ($IfExists -eq "Skip") {
         return $null
     }
@@ -480,7 +504,7 @@ function Resolve-OutputPath {
     while ($true) {
         $suffixedName = ("{0}-{1}{2}" -f $BaseName, $i, $Extension)
         $next = [System.IO.Path]::Combine($DirectoryPath, $suffixedName)
-        if (-not (Test-Path -LiteralPath $next)) {
+        if (-not (Test-Path -LiteralPath $next) -or -not (Test-OutputFileReady -Path $next)) {
             return $next
         }
         $i++
@@ -519,6 +543,7 @@ function Save-AsJpegWithMagick {
 
     $args = @(
         $InputPath,
+        "-auto-orient",
         "-strip",
         "-colorspace", "sRGB",
         "-depth", "8",
@@ -546,6 +571,7 @@ function Save-AsWebp {
 
     $args = @(
         $InputPath,
+        "-auto-orient",
         "-strip",
         "-colorspace", "sRGB",
         "-depth", "8",
@@ -576,6 +602,7 @@ function Save-AsAvif {
 
     $args = @(
         $InputPath,
+        "-auto-orient",
         "-strip",
         "-colorspace", "sRGB",
         "-depth", "8",
@@ -602,6 +629,7 @@ function Save-AsPngWithMagick {
 
     $args = @(
         $InputPath,
+        "-auto-orient",
         "-strip",
         "-colorspace", "sRGB",
         "-depth", "8",
