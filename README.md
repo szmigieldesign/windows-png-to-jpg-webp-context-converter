@@ -68,3 +68,7 @@ Run log is written to `%TEMP%\png-converter-context.log`.
 Set-ExecutionPolicy -Scope Process Bypass
 .\uninstall-context-menu.ps1
 ```
+
+## License
+
+MIT. See `LICENSE`.
