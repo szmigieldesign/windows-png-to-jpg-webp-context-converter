@@ -407,6 +407,12 @@ function Save-AsWebp {
 
     $args = @(
         $InputPath,
+        "-strip",
+        "-colorspace", "sRGB",
+        "-depth", "8",
+        "-define", "webp:method=6",
+        "-define", "webp:use-sharp-yuv=true",
+        "-define", "webp:alpha-quality=90",
         "-quality", [string]$WebpQuality,
         $OutputPath
     )

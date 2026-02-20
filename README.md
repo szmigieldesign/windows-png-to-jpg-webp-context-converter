@@ -1,6 +1,6 @@
 # PNG Converter Context Menu Tool (Windows 11)
 
-Version: **0.1.0**
+Version: **0.1.1**
 
 Quick PNG conversion from right-click context menu with four actions:
 
@@ -48,8 +48,19 @@ winget install ImageMagick.ImageMagick
    - or `Convert to WebP (remove)`
 
 Output files are saved next to originals as `.jpg` or `.webp`.
+WebP export strips metadata.
+WebP export defaults are tuned for web use: `sRGB`, `8-bit`, `webp:method=6`, `webp:use-sharp-yuv=true`, `webp:alpha-quality=90`.
 You get a single completion popup per burst of conversions (aggregated across parallel invocations to avoid popup spam).
 Run log is written to `%TEMP%\png-converter-context.log`.
+
+## Release Notes
+
+### 0.1.1
+
+- Added WebP conversion actions in context menu.
+- WebP export now strips metadata by default.
+- WebP export defaults tuned for web: `sRGB`, `8-bit`, `webp:method=6`, `webp:use-sharp-yuv=true`, `webp:alpha-quality=90`.
+- Improved completion notifications to avoid popup spam for multi-file runs.
 
 ## Uninstall
 
