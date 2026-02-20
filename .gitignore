@@ -1,0 +1,9 @@
+# Local logs and temp state
+*.log
+
+# Local packaging artifacts
+*.zip
+
+# Editor/system
+.DS_Store
+Thumbs.db
