@@ -5,8 +5,14 @@ param(
     [switch]$RemoveOriginal,
     [switch]$NotifyWorker,
     [switch]$NoNotify,
-    [ValidateSet("Jpg", "Webp")]
+    [ValidateSet("Jpg", "Webp", "Avif", "Png")]
     [string]$Format = "Jpg",
+    [ValidateSet("Same", "New")]
+    [string]$OutputMode = "Same",
+    [ValidateSet("Skip", "Suffix")]
+    [string]$IfExists = "Skip",
+    [switch]$Overwrite,
+    [switch]$UseMagickForJpg,
     [ValidateRange(0, 100)]
     [int]$Quality = 80
 )
@@ -23,6 +29,7 @@ $notifyStateDir = Join-Path -Path $env:TEMP -ChildPath "png-converter-context-no
 $notifyStatePath = Join-Path -Path $notifyStateDir -ChildPath "state.json"
 $notifyWorkerLockPath = Join-Path -Path $notifyStateDir -ChildPath "worker.lock"
 $notifyMutexName = "Local\ContextConverterPngToolNotify"
+$magickMissingStampPath = Join-Path -Path $notifyStateDir -ChildPath "magick-missing.stamp"
 
 function Write-RunLog {
     param(
@@ -134,6 +141,7 @@ function Read-NotificationState {
         Converted = 0
         Removed = 0
         Failed = 0
+        Skipped = 0
         Active = 0
         LastUpdateUtc = [DateTime]::UtcNow.ToString("o", [System.Globalization.CultureInfo]::InvariantCulture)
     }
@@ -146,6 +154,7 @@ function Read-NotificationState {
                 if ($null -ne $json.Converted) { $state.Converted = [int]$json.Converted }
                 if ($null -ne $json.Removed) { $state.Removed = [int]$json.Removed }
                 if ($null -ne $json.Failed) { $state.Failed = [int]$json.Failed }
+                if ($null -ne $json.Skipped) { $state.Skipped = [int]$json.Skipped }
                 if ($null -ne $json.Active) { $state.Active = [int]$json.Active }
                 if ($json.LastUpdateUtc) { $state.LastUpdateUtc = [string]$json.LastUpdateUtc }
             }
@@ -165,6 +174,8 @@ function Update-NotificationState {
         [int]$Removed,
         [Parameter(Mandatory = $true)]
         [int]$Failed,
+        [Parameter(Mandatory = $true)]
+        [int]$Skipped,
         [Parameter(Mandatory = $true)]
         [int]$ActiveDelta
     )
@@ -187,6 +198,7 @@ function Update-NotificationState {
         $state.Converted += $Converted
         $state.Removed += $Removed
         $state.Failed += $Failed
+        $state.Skipped += $Skipped
         $state.Active += $ActiveDelta
         if ($state.Active -lt 0) {
             $state.Active = 0
@@ -317,9 +329,11 @@ function Run-NotificationWorker {
 
         if ($shouldNotify -and $state) {
             if ([int]$state.Failed -gt 0) {
-                Show-Notification -Title "PNG Converter" -Message "Done with errors. Converted: $($state.Converted), Failed: $($state.Failed)"
+                Show-Notification -Title "Image Converter" -Message "Done with errors. Converted: $($state.Converted), Skipped: $($state.Skipped), Failed: $($state.Failed)"
             } elseif ([int]$state.Converted -gt 0) {
-                Show-Notification -Title "PNG Converter" -Message "Done. Converted: $($state.Converted)"
+                Show-Notification -Title "Image Converter" -Message "Done. Converted: $($state.Converted), Skipped: $($state.Skipped)"
+            } elseif ([int]$state.Skipped -gt 0) {
+                Show-Notification -Title "Image Converter" -Message "Done. Skipped: $($state.Skipped)"
             }
             return
         }
@@ -388,9 +402,134 @@ function Save-AsJpeg {
 function Get-MagickExe {
     $magick = Get-Command -Name "magick.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $magick) {
-        throw "WebP conversion requires ImageMagick (magick.exe) in PATH."
+        return $null
     }
-    return $magick.Source
+    return [string]$magick.Source
+}
+
+function Show-MagickMissingOnce {
+    if ($NoNotify) {
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath $notifyStateDir)) {
+        New-Item -ItemType Directory -Path $notifyStateDir -Force | Out-Null
+    }
+
+    $shouldShow = $false
+    $lock = Acquire-Mutex -Name $notifyMutexName
+    try {
+        if (-not $lock.HasLock) {
+            return
+        }
+
+        $now = Get-Date
+        $cooldownSeconds = 20
+        if (Test-Path -LiteralPath $magickMissingStampPath) {
+            try {
+                $stampRaw = Get-Content -LiteralPath $magickMissingStampPath -Raw -ErrorAction Stop
+                $stamp = [DateTime]::Parse(
+                    $stampRaw,
+                    [System.Globalization.CultureInfo]::InvariantCulture,
+                    [System.Globalization.DateTimeStyles]::RoundtripKind
+                )
+                $age = ($now.ToUniversalTime() - $stamp.ToUniversalTime()).TotalSeconds
+                if ($age -lt $cooldownSeconds) {
+                    return
+                }
+            } catch {
+                # Ignore malformed stamp and show popup.
+            }
+        }
+
+        [System.IO.File]::WriteAllText(
+            $magickMissingStampPath,
+            $now.ToString("o", [System.Globalization.CultureInfo]::InvariantCulture),
+            [System.Text.Encoding]::UTF8
+        )
+        $shouldShow = $true
+    } finally {
+        Release-Mutex -Mutex $lock.Mutex -HasLock $lock.HasLock
+    }
+
+    if ($shouldShow) {
+        Show-Notification -Title "Image Converter" -Message "ImageMagick is required for WebP/AVIF and advanced transcoding.`nInstall: winget install ImageMagick.ImageMagick"
+    }
+}
+
+function Resolve-OutputPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DirectoryPath,
+        [Parameter(Mandatory = $true)]
+        [string]$BaseName,
+        [Parameter(Mandatory = $true)]
+        [string]$Extension
+    )
+
+    $candidate = [System.IO.Path]::Combine($DirectoryPath, "$BaseName$Extension")
+    if ($Overwrite -or -not (Test-Path -LiteralPath $candidate)) {
+        return $candidate
+    }
+
+    if ($IfExists -eq "Skip") {
+        return $null
+    }
+
+    $i = 1
+    while ($true) {
+        $suffixedName = ("{0}-{1}{2}" -f $BaseName, $i, $Extension)
+        $next = [System.IO.Path]::Combine($DirectoryPath, $suffixedName)
+        if (-not (Test-Path -LiteralPath $next)) {
+            return $next
+        }
+        $i++
+    }
+}
+
+function Test-OutputFileReady {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $false
+    }
+
+    try {
+        $item = Get-Item -LiteralPath $Path -ErrorAction Stop
+        return ($item.Length -gt 0)
+    } catch {
+        return $false
+    }
+}
+
+function Save-AsJpegWithMagick {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InputPath,
+        [Parameter(Mandatory = $true)]
+        [string]$OutputPath,
+        [Parameter(Mandatory = $true)]
+        [int]$JpegQuality,
+        [Parameter(Mandatory = $true)]
+        [string]$MagickExePath
+    )
+
+    $args = @(
+        $InputPath,
+        "-strip",
+        "-colorspace", "sRGB",
+        "-depth", "8",
+        "-quality", [string]$JpegQuality,
+        $OutputPath
+    )
+
+    & $MagickExePath @args
+    if ($LASTEXITCODE -ne 0) {
+        throw "ImageMagick failed with exit code $LASTEXITCODE."
+    }
 }
 
 function Save-AsWebp {
@@ -423,9 +562,116 @@ function Save-AsWebp {
     }
 }
 
+function Save-AsAvif {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InputPath,
+        [Parameter(Mandatory = $true)]
+        [string]$OutputPath,
+        [Parameter(Mandatory = $true)]
+        [int]$AvifQuality,
+        [Parameter(Mandatory = $true)]
+        [string]$MagickExePath
+    )
+
+    $args = @(
+        $InputPath,
+        "-strip",
+        "-colorspace", "sRGB",
+        "-depth", "8",
+        "-define", "heic:speed=6",
+        "-quality", [string]$AvifQuality,
+        $OutputPath
+    )
+
+    & $MagickExePath @args
+    if ($LASTEXITCODE -ne 0) {
+        throw "ImageMagick failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Save-AsPngWithMagick {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InputPath,
+        [Parameter(Mandatory = $true)]
+        [string]$OutputPath,
+        [Parameter(Mandatory = $true)]
+        [string]$MagickExePath
+    )
+
+    $args = @(
+        $InputPath,
+        "-strip",
+        "-colorspace", "sRGB",
+        "-depth", "8",
+        "-define", "png:compression-level=9",
+        $OutputPath
+    )
+
+    & $MagickExePath @args
+    if ($LASTEXITCODE -ne 0) {
+        throw "ImageMagick failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Get-FormatFromExtension {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Extension
+    )
+
+    switch ($Extension.ToLowerInvariant()) {
+        ".png" { return "Png" }
+        ".jpg" { return "Jpg" }
+        ".jpeg" { return "Jpg" }
+        ".webp" { return "Webp" }
+        ".avif" { return "Avif" }
+        default { return $null }
+    }
+}
+
+function Get-DefaultExtensionForFormat {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TargetFormat
+    )
+
+    switch ($TargetFormat) {
+        "Png" { return ".png" }
+        "Jpg" { return ".jpg" }
+        "Webp" { return ".webp" }
+        "Avif" { return ".avif" }
+        default { throw "Unsupported target format: $TargetFormat" }
+    }
+}
+
+function Test-LossyFormat {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FormatName
+    )
+
+    return $FormatName -in @("Jpg", "Webp", "Avif")
+}
+
+function Test-LosslessFormat {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FormatName
+    )
+
+    return $FormatName -eq "Png"
+}
+
+function Get-SupportedInputExtensions {
+    return @(".png", ".jpg", ".jpeg", ".webp", ".avif")
+}
+
 function Resolve-InputFiles {
     param(
-        [string[]]$RawPaths
+        [string[]]$RawPaths,
+        [string[]]$AllowedExtensions
     )
 
     $resolved = New-Object System.Collections.Generic.List[string]
@@ -446,7 +692,9 @@ function Resolve-InputFiles {
 
         $item = Get-Item -LiteralPath $path
         if ($item.PSIsContainer) {
-            Get-ChildItem -LiteralPath $item.FullName -File -Filter "*.png" | ForEach-Object {
+            Get-ChildItem -LiteralPath $item.FullName -File | Where-Object {
+                $AllowedExtensions -contains $_.Extension.ToLowerInvariant()
+            } | ForEach-Object {
                 $resolved.Add($_.FullName)
             }
         } else {
@@ -455,6 +703,32 @@ function Resolve-InputFiles {
     }
 
     return $resolved
+}
+
+function Get-OutputDirectory {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InputFilePath,
+        [Parameter(Mandatory = $true)]
+        [string]$TargetFormat
+    )
+
+    $sourceDir = [System.IO.Path]::GetDirectoryName($InputFilePath)
+    if ($OutputMode -eq "Same") {
+        return $sourceDir
+    }
+
+    $folderName = switch ($TargetFormat) {
+        "Webp" { "WEBP" }
+        "Avif" { "AVIF" }
+        "Png" { "PNG" }
+        default { "JPEG" }
+    }
+    $targetDir = Join-Path -Path $sourceDir -ChildPath $folderName
+    if (-not (Test-Path -LiteralPath $targetDir)) {
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+    }
+    return $targetDir
 }
 
 function Remove-WithRetry {
@@ -477,54 +751,144 @@ function Remove-WithRetry {
     }
 }
 
+$supportedExtensions = Get-SupportedInputExtensions
 $inputFiles = @(
-    Resolve-InputFiles -RawPaths $Paths |
-        Where-Object { $_.ToLowerInvariant().EndsWith(".png") } |
+    Resolve-InputFiles -RawPaths $Paths -AllowedExtensions $supportedExtensions |
+        Where-Object {
+            $supportedExtensions -contains [System.IO.Path]::GetExtension($_).ToLowerInvariant()
+        } |
         Select-Object -Unique
 )
 
 if (-not $inputFiles -or $inputFiles.Count -eq 0) {
-    Write-RunLog "No PNG files selected."
-    Write-Host "No PNG files selected."
+    Write-RunLog "No supported input files selected."
+    Write-Host "No supported input files selected."
     exit 0
 }
 
-$targetExt = if ($Format -eq "Webp") { ".webp" } else { ".jpg" }
+$targetExt = Get-DefaultExtensionForFormat -TargetFormat $Format
 $mode = if ($RemoveOriginal) { "convert+remove" } else { "convert" }
-Write-RunLog "Started ($mode, format=$Format). Files: $($inputFiles.Count), Quality: $Quality"
-Update-NotificationState -Converted 0 -Removed 0 -Failed 0 -ActiveDelta 1
+$dependencyMagick = Get-MagickExe
+$requiresMagickForAll = ($Format -in @("Webp", "Avif", "Png")) -or $UseMagickForJpg
+if ($requiresMagickForAll -and -not $dependencyMagick) {
+    $msg = "ImageMagick (magick.exe) is required for this conversion mode. Install with: winget install ImageMagick.ImageMagick"
+    Write-RunLog $msg
+    Show-MagickMissingOnce
+    Write-Warning $msg
+    exit 2
+}
+
+Write-RunLog "Started ($mode, format=$Format, outputMode=$OutputMode, ifExists=$IfExists, overwrite=$Overwrite). Files: $($inputFiles.Count), Quality: $Quality"
+Update-NotificationState -Converted 0 -Removed 0 -Failed 0 -Skipped 0 -ActiveDelta 1
 Ensure-NotificationWorker
 $activeRegistered = $true
 
 $converted = 0
 $removed = 0
 $failed = 0
+$skipped = 0
+$magickMissingShown = $false
 
 try {
     $jpegCodec = $null
-    $magickExe = $null
-    if ($Format -eq "Jpg") {
+    $magickExe = $dependencyMagick
+    if ($Format -eq "Jpg" -and -not $UseMagickForJpg) {
         $jpegCodec = Get-JpegCodec
-    } else {
-        $magickExe = Get-MagickExe
     }
 
     foreach ($file in $inputFiles) {
         try {
-            $dir = [System.IO.Path]::GetDirectoryName($file)
-            $name = [System.IO.Path]::GetFileNameWithoutExtension($file)
-            $outPath = [System.IO.Path]::Combine($dir, "$name$targetExt")
+            $sourceExt = [System.IO.Path]::GetExtension($file).ToLowerInvariant()
+            $sourceFormat = Get-FormatFromExtension -Extension $sourceExt
+            if (-not $sourceFormat) {
+                $skipped++
+                Write-RunLog "Skipped (unsupported source): $file"
+                Write-Host "Skipped (unsupported source): $file"
+                continue
+            }
 
-            if ($Format -eq "Jpg") {
-                Save-AsJpeg -InputPath $file -OutputPath $outPath -JpegQuality $Quality -Codec $jpegCodec
-            } else {
-                Save-AsWebp -InputPath $file -OutputPath $outPath -WebpQuality $Quality -MagickExePath $magickExe
+            if ($sourceFormat -eq $Format) {
+                $skipped++
+                Write-RunLog "Skipped (same format): $file"
+                Write-Host "Skipped (same format): $file"
+                continue
+            }
+
+            if ((Test-LossyFormat -FormatName $sourceFormat) -and (Test-LosslessFormat -FormatName $Format)) {
+                $skipped++
+                Write-RunLog "Skipped (lossy->lossless blocked): $file"
+                Write-Host "Skipped (lossy->lossless blocked): $file"
+                continue
+            }
+
+            $needsMagick = $false
+            switch ($Format) {
+                "Jpg" {
+                    $needsMagick = $UseMagickForJpg -or ($sourceFormat -in @("Webp", "Avif"))
+                }
+                default {
+                    $needsMagick = $true
+                }
+            }
+
+            if ($needsMagick -and -not $magickExe) {
+                if (-not $magickMissingShown) {
+                    $msg = "ImageMagick (magick.exe) is required for this conversion. Install with: winget install ImageMagick.ImageMagick"
+                    Write-RunLog $msg
+                    Show-MagickMissingOnce
+                    Write-Warning $msg
+                    $magickMissingShown = $true
+                }
+
+                $failed++
+                Write-RunLog "Failed: $file - ImageMagick is not installed."
+                Write-Warning "Failed: $file - ImageMagick is not installed."
+                continue
+            }
+
+            $dir = Get-OutputDirectory -InputFilePath $file -TargetFormat $Format
+            $name = [System.IO.Path]::GetFileNameWithoutExtension($file)
+            $outPath = Resolve-OutputPath -DirectoryPath $dir -BaseName $name -Extension $targetExt
+            if (-not $outPath) {
+                $skipped++
+                Write-RunLog "Skipped (exists): $file"
+                Write-Host "Skipped (exists): $file"
+                continue
+            }
+
+            switch ($Format) {
+                "Jpg" {
+                    if ($needsMagick) {
+                        Save-AsJpegWithMagick -InputPath $file -OutputPath $outPath -JpegQuality $Quality -MagickExePath $magickExe
+                    } else {
+                        Save-AsJpeg -InputPath $file -OutputPath $outPath -JpegQuality $Quality -Codec $jpegCodec
+                    }
+                }
+                "Webp" {
+                    Save-AsWebp -InputPath $file -OutputPath $outPath -WebpQuality $Quality -MagickExePath $magickExe
+                }
+                "Avif" {
+                    Save-AsAvif -InputPath $file -OutputPath $outPath -AvifQuality $Quality -MagickExePath $magickExe
+                }
+                "Png" {
+                    Save-AsPngWithMagick -InputPath $file -OutputPath $outPath -MagickExePath $magickExe
+                }
+                default {
+                    throw "Unsupported target format: $Format"
+                }
+            }
+
+            if (-not (Test-OutputFileReady -Path $outPath)) {
+                throw "Output file is missing or empty: $outPath"
             }
             $converted++
             Write-RunLog "Converted: $file -> $outPath"
             Write-Host "Converted: $file -> $outPath"
 
             if ($RemoveOriginal) {
+                if (-not (Test-OutputFileReady -Path $outPath)) {
+                    throw "Original not removed because output is missing or empty: $outPath"
+                }
                 Remove-WithRetry -Path $file
                 $removed++
                 Write-RunLog "Removed: $file"
@@ -538,14 +902,14 @@ try {
     }
 } finally {
     if ($activeRegistered) {
-        Update-NotificationState -Converted $converted -Removed $removed -Failed $failed -ActiveDelta -1
+        Update-NotificationState -Converted $converted -Removed $removed -Failed $failed -Skipped $skipped -ActiveDelta -1
         Ensure-NotificationWorker
     }
 }
 
 Write-Host ""
-Write-Host "Done. Converted: $converted, Removed: $removed, Failed: $failed"
-Write-RunLog "Done. Converted: $converted, Removed: $removed, Failed: $failed"
+Write-Host "Done. Converted: $converted, Skipped: $skipped, Removed: $removed, Failed: $failed"
+Write-RunLog "Done. Converted: $converted, Skipped: $skipped, Removed: $removed, Failed: $failed"
 
 if ($failed -gt 0) {
     exit 1
