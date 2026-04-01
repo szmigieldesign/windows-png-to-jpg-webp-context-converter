@@ -103,6 +103,28 @@ function Get-MagickExePath {
     return $null
 }
 
+function Get-PwshExePath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SearchRoot
+    )
+
+    if (Test-Path -LiteralPath $SearchRoot) {
+        $bundled = Get-ChildItem -Path $SearchRoot -Recurse -Filter "pwsh.exe" -File -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($bundled) {
+            return [string]$bundled.FullName
+        }
+    }
+
+    $cmd = Get-Command -Name "pwsh.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($cmd) {
+        return [string]$cmd.Source
+    }
+
+    return $null
+}
+
 function Install-MagickWithWinget {
     Write-Stage "Checking ImageMagick via winget"
 
@@ -197,6 +219,85 @@ function Install-MagickPortable {
     return [bool]$magick
 }
 
+function Get-PowerShellReleaseAsset {
+    Write-Stage "Locating PowerShell portable package"
+
+    $headers = @{
+        "User-Agent" = "ImageConverterInstaller/1.0"
+        "Accept" = "application/vnd.github+json"
+    }
+
+    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/PowerShell/PowerShell/releases/latest" -Headers $headers -Method Get
+    $assets = @($release.assets)
+    if (-not $assets -or $assets.Count -eq 0) {
+        throw "PowerShell release did not include any downloadable assets."
+    }
+
+    $patterns = @(
+        "(?i)win-x64\.zip$",
+        "(?i)win-x86\.zip$"
+    )
+
+    foreach ($pattern in $patterns) {
+        $candidate = $assets | Where-Object { $_.name -match $pattern } | Select-Object -First 1
+        if ($candidate) {
+            return $candidate
+        }
+    }
+
+    throw "No suitable PowerShell zip asset was found in the latest release."
+}
+
+function Install-PowerShellPortable {
+    Write-Stage "Downloading PowerShell portable package"
+
+    $asset = Get-PowerShellReleaseAsset
+    $packageDir = Join-Path -Path $installRoot -ChildPath "tools\PowerShell7"
+    if (-not (Test-Path -LiteralPath $packageDir)) {
+        New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
+    }
+
+    $tempZip = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("powershell-{0}.zip" -f ([Guid]::NewGuid().ToString("N")))
+    try {
+        Invoke-WebRequest -Uri $asset.browser_download_url -Headers @{
+            "User-Agent" = "ImageConverterInstaller/1.0"
+        } -OutFile $tempZip
+
+        $stagingDir = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("powershell-{0}" -f ([Guid]::NewGuid().ToString("N")))
+        New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
+        try {
+            Expand-Archive -LiteralPath $tempZip -DestinationPath $stagingDir -Force
+
+            Remove-Item -LiteralPath $packageDir -Recurse -Force -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
+
+            Copy-Item -Path (Join-Path -Path $stagingDir -ChildPath "*") -Destination $packageDir -Recurse -Force
+        } finally {
+            Remove-Item -LiteralPath $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    } finally {
+        Remove-Item -LiteralPath $tempZip -Force -ErrorAction SilentlyContinue
+    }
+
+    $pwsh = Get-PwshExePath -SearchRoot $packageDir
+    return [bool]$pwsh
+}
+
+function Ensure-PowerShell7 {
+    $existing = Get-PwshExePath -SearchRoot (Join-Path -Path $installRoot -ChildPath "tools\PowerShell7")
+    if ($existing) {
+        Write-Host "PowerShell 7 found: $existing"
+        return
+    }
+
+    if (Install-PowerShellPortable) {
+        Write-Host "PowerShell 7 installed in the app folder."
+        return
+    }
+
+    throw "PowerShell 7 could not be installed automatically."
+}
+
 function Ensure-ImageMagick {
     $existing = Get-MagickExePath -SearchRoot (Join-Path -Path $installRoot -ChildPath "tools\ImageMagick")
     if ($existing) {
@@ -253,6 +354,7 @@ Write-Stage "Installing to $installRoot"
 if (-not $NoCopy) {
     Copy-PackageFiles
 }
+Ensure-PowerShell7
 Ensure-ImageMagick
 Invoke-ContextMenuInstall
 

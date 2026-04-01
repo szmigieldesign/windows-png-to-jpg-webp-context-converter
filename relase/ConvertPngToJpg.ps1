@@ -55,6 +55,25 @@ function Write-RunLog {
     }
 }
 
+function Get-PreferredPwshPath {
+    $bundledPwsh = Join-Path -Path $PSScriptRoot -ChildPath "tools\PowerShell7\pwsh.exe"
+    if (Test-Path -LiteralPath $bundledPwsh) {
+        return $bundledPwsh
+    }
+
+    $pwsh = Get-Command -Name "pwsh.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($pwsh) {
+        return [string]$pwsh.Source
+    }
+
+    $windowsPowerShell = Get-Command -Name "powershell.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($windowsPowerShell) {
+        return [string]$windowsPowerShell.Source
+    }
+
+    return $null
+}
+
 function Show-Notification {
     param(
         [string]$Title,
@@ -262,8 +281,7 @@ function Ensure-NotificationWorker {
         Write-RunLog "Notification worker not started: script path is unavailable."
         return
     }
-    $pwsh = Get-Command -Name "pwsh.exe" -ErrorAction SilentlyContinue
-    $hostExe = if ($pwsh) { $pwsh.Source } else { (Get-Command -Name "powershell.exe" -ErrorAction SilentlyContinue).Source }
+    $hostExe = Get-PreferredPwshPath
     if (-not $hostExe) {
         return
     }

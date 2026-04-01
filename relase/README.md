@@ -1,6 +1,6 @@
 # PNG/JPEG/WEBP/AVIF Converter Context Menu Tool (Windows 11)
 
-Version: **0.3.1**
+Version: **0.3.2**
 
 Quick right-click transcoding with submenu actions:
 
@@ -49,9 +49,11 @@ JPG/WebP/AVIF quality is set to **80**.
 For the public release package, run `relase\Setup.exe` and let it handle the rest:
 
 1. Copies the scripts into `%LOCALAPPDATA%\Programs\PNG-JPG-WebP-AVIF-Converter`
-2. Checks for `magick.exe`
-3. Installs ImageMagick automatically if it is missing
-4. Registers the context menu entries for the current user
+2. Checks for `pwsh.exe`
+3. Downloads a portable PowerShell 7 runtime into the app folder if `pwsh` is missing
+4. Checks for `magick.exe`
+5. Installs ImageMagick automatically if it is missing
+6. Registers the context menu entries for the current user
 
 If you prefer to install manually from source, run PowerShell in this folder:
 
@@ -77,7 +79,9 @@ WebP conversion uses `magick.exe` (ImageMagick). Install it and ensure it's in `
 winget install ImageMagick.ImageMagick
 ```
 
-The installer will try to do this automatically, using `winget` first and a portable download fallback if needed.
+The installer will try to do this automatically.
+
+If `pwsh.exe` is missing, the installer downloads a portable PowerShell 7 runtime into the app folder and the converter uses it on the next run.
 
 To rebuild the installer, run:
 
@@ -165,6 +169,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\ConvertPngToJpg.ps1 -UseMa
 - Added a proper `Setup.exe` installer build via Inno Setup.
 - Added a reproducible `Build-Installer.ps1` build path.
 - Kept the public release package under `relase/` for the generated installer.
+
+### 0.3.2
+
+- Added automatic portable PowerShell 7 bootstrap when `pwsh.exe` is missing.
+- Updated runtime launchers to prefer bundled PowerShell 7 when available.
+- Kept the ImageMagick bootstrap flow in the installer.
 
 ### 0.3.0
 
