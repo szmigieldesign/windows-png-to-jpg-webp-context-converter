@@ -1,6 +1,6 @@
 # PNG/JPEG/WEBP/AVIF Converter Context Menu Tool (Windows 11)
 
-Version: **0.3.0**
+Version: **0.3.1**
 
 Quick right-click transcoding with submenu actions:
 
@@ -31,6 +31,9 @@ JPG/WebP/AVIF quality is set to **80**.
 ## Files
 
 - `relase/` - public release package with the installer and distributable scripts
+- `relase/Setup.exe` - compiled end-user installer
+- `installer.iss` - Inno Setup definition for the installer
+- `Build-Installer.ps1` - reproducible build script for `Setup.exe`
 - `Setup.cmd` - double-click installer wrapper
 - `Install-ImageConverter.ps1` - installer that copies the app locally, bootstraps ImageMagick, and registers the context menu
 - `Uninstall.cmd` - double-click uninstall wrapper
@@ -43,7 +46,7 @@ JPG/WebP/AVIF quality is set to **80**.
 
 ## Install
 
-For the public release package, run `Setup.cmd` and let it handle the rest:
+For the public release package, run `relase\Setup.exe` and let it handle the rest:
 
 1. Copies the scripts into `%LOCALAPPDATA%\Programs\PNG-JPG-WebP-AVIF-Converter`
 2. Checks for `magick.exe`
@@ -75,6 +78,13 @@ winget install ImageMagick.ImageMagick
 ```
 
 The installer will try to do this automatically, using `winget` first and a portable download fallback if needed.
+
+To rebuild the installer, run:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\Build-Installer.ps1
+```
 
 ## Conversion Behavior
 
@@ -149,6 +159,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\ConvertPngToJpg.ps1 -UseMa
 ```
 
 ## Release Notes
+
+### 0.3.1
+
+- Added a proper `Setup.exe` installer build via Inno Setup.
+- Added a reproducible `Build-Installer.ps1` build path.
+- Kept the public release package under `relase/` for the generated installer.
 
 ### 0.3.0
 

@@ -2,7 +2,8 @@
 param(
     [string]$InstallRoot = (Join-Path -Path $env:LOCALAPPDATA -ChildPath "Programs\PNG-JPG-WebP-AVIF-Converter"),
     [ValidateSet("Auto", "Vbs", "PowerShell")]
-    [string]$LauncherMode = "PowerShell"
+    [string]$LauncherMode = "PowerShell",
+    [switch]$NoCopy
 )
 
 Set-StrictMode -Version Latest
@@ -249,7 +250,9 @@ function Invoke-ContextMenuInstall {
 
 Assert-SourceFiles
 Write-Stage "Installing to $installRoot"
-Copy-PackageFiles
+if (-not $NoCopy) {
+    Copy-PackageFiles
+}
 Ensure-ImageMagick
 Invoke-ContextMenuInstall
 
