@@ -16,6 +16,7 @@ try {
 }
 
 $sourceRoot = $PSScriptRoot
+$repositoryRoot = Split-Path -Parent $sourceRoot
 $installRoot = [System.IO.Path]::GetFullPath($InstallRoot)
 $magickPackageId = "ImageMagick.ImageMagick"
 
@@ -28,6 +29,26 @@ function Write-Stage {
 function Test-Command {
     param([Parameter(Mandatory = $true)][string]$Name)
     return [bool](Get-Command -Name $Name -ErrorAction SilentlyContinue)
+}
+
+function Resolve-PackageFilePath {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    $candidates = @(
+        (Join-Path -Path $sourceRoot -ChildPath $Name)
+    )
+
+    if ($Name -in @("README.md", "LICENSE", "VERSION")) {
+        $candidates += (Join-Path -Path $repositoryRoot -ChildPath $Name)
+    }
+
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+            return $candidate
+        }
+    }
+
+    return $null
 }
 
 function Assert-SourceFiles {
@@ -47,9 +68,9 @@ function Assert-SourceFiles {
     )
 
     foreach ($name in $required) {
-        $path = Join-Path -Path $sourceRoot -ChildPath $name
-        if (-not (Test-Path -LiteralPath $path)) {
-            throw "Required package file not found: $path"
+        $path = Resolve-PackageFilePath -Name $name
+        if (-not $path) {
+            throw "Required package file not found: $name"
         }
     }
 }
@@ -75,7 +96,10 @@ function Copy-PackageFiles {
     )
 
     foreach ($name in $files) {
-        $sourcePath = Join-Path -Path $sourceRoot -ChildPath $name
+        $sourcePath = Resolve-PackageFilePath -Name $name
+        if (-not $sourcePath) {
+            throw "Package file not found: $name"
+        }
         $targetPath = Join-Path -Path $installRoot -ChildPath $name
         Copy-Item -LiteralPath $sourcePath -Destination $targetPath -Force
     }

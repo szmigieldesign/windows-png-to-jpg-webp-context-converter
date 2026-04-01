@@ -8,11 +8,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $scriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+$repoRoot = Split-Path -Parent $scriptRoot
 if (-not $VersionFile) {
-    $VersionFile = Join-Path -Path $scriptRoot -ChildPath "VERSION"
+    $VersionFile = Join-Path -Path $repoRoot -ChildPath "VERSION"
 }
 if (-not $InstallerScript) {
-    $InstallerScript = Join-Path -Path $scriptRoot -ChildPath "installer.iss"
+    $InstallerScript = Join-Path -Path $repoRoot -ChildPath "installer\installer.iss"
 }
 
 function Write-Stage {
@@ -62,16 +63,41 @@ if (-not $compilerPath) {
     throw "Inno Setup compiler not found. Install JRSoftware.InnoSetup, then rerun this build."
 }
 
+$releaseDir = Join-Path -Path $repoRoot -ChildPath "release"
+if (-not (Test-Path -LiteralPath $releaseDir)) {
+    New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+}
+
+function Remove-ReleaseTempFiles {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    Get-ChildItem -LiteralPath $Path -File -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -like "*.tmp" -or
+            $_.Name -like "RCX*.tmp" -or
+            $_.Name -like "Setup.e32*"
+        } |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+}
+
+Remove-ReleaseTempFiles -Path $releaseDir
+
 Write-Stage "Building Setup.exe version $version"
 & $compilerPath "/DAppVersion=$version" $InstallerScript
 if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup build failed with exit code $LASTEXITCODE."
 }
 
-$setupPath = Join-Path -Path $scriptRoot -ChildPath "relase\Setup.exe"
+$setupPath = Join-Path -Path $releaseDir -ChildPath "Setup.exe"
 if (-not (Test-Path -LiteralPath $setupPath)) {
     throw "Build completed but Setup.exe was not produced: $setupPath"
 }
+
+Remove-ReleaseTempFiles -Path $releaseDir
 
 Write-Host ""
 Write-Host "Built installer: $setupPath" -ForegroundColor Green

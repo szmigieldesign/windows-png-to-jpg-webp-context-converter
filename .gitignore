@@ -3,6 +3,8 @@
 
 # Local packaging artifacts
 *.zip
+release/*.tmp
+release/*.e32*
 
 # Editor/system
 .DS_Store

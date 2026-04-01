@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.3.2"
+  #define AppVersion "0.3.3"
 #endif
 
 #define AppName "PNG/JPEG/WEBP/AVIF Converter Context Menu Tool"
@@ -17,7 +17,7 @@ DefaultDirName={localappdata}\Programs\PNG-JPG-WebP-AVIF-Converter
 DefaultGroupName={#AppName}
 DisableDirPage=yes
 DisableProgramGroupPage=yes
-OutputDir=relase
+OutputDir=..\release
 OutputBaseFilename=Setup
 Compression=lzma2
 SolidCompression=yes
@@ -32,18 +32,18 @@ SetupLogging=yes
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-Source: "relase\ConvertPngToJpg.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "relase\Install-ImageConverter.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "relase\install-context-menu.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "relase\uninstall-context-menu.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "relase\Uninstall-ImageConverter.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "relase\Run-Converter.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "relase\Run-Converter.vbs"; DestDir: "{app}"; Flags: ignoreversion
-Source: "relase\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "relase\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
-Source: "relase\VERSION"; DestDir: "{app}"; Flags: ignoreversion
-Source: "relase\Setup.cmd"; DestDir: "{app}"; Flags: ignoreversion
-Source: "relase\Uninstall.cmd"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\ConvertPngToJpg.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Install-ImageConverter.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\install-context-menu.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\uninstall-context-menu.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Uninstall-ImageConverter.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Run-Converter.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Run-Converter.vbs"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\VERSION"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Setup.cmd"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src\Uninstall.cmd"; DestDir: "{app}"; Flags: ignoreversion
 
 [Run]
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Install-ImageConverter.ps1"" -NoCopy"; Flags: postinstall runhidden waituntilterminated; StatusMsg: "Configuring ImageMagick and the context menu..."
