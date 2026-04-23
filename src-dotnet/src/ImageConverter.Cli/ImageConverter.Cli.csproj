@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\ImageConverter.Core\ImageConverter.Core.csproj" />
+    <ProjectReference Include="..\ImageConverter.Shell\ImageConverter.Shell.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>ImageConverter</AssemblyName>
+    <RootNamespace>ImageConverter.Cli</RootNamespace>
+  </PropertyGroup>
+
+</Project>

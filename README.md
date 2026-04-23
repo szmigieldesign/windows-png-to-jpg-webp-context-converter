@@ -1,238 +1,156 @@
-# PNG/JPEG/WEBP/AVIF Converter Context Menu Tool (Windows 11)
+# Image Converter
 
-Version: **0.3.3**
+Windows Explorer context menu and CLI utility for converting PNG, JPG/JPEG, WEBP, and AVIF files with a .NET 8 runtime.
 
-Quick right-click transcoding with submenu actions:
+## Status
 
-- PNG inputs (`.png`):
-  - `Convert to JPG`
-  - `Convert to JPG (new folder)`
-  - `Convert to JPG (remove)`
-  - `Convert to WebP`
-  - `Convert to WebP (new folder)`
-  - `Convert to WebP (remove)`
-  - `Convert to AVIF`
-  - `Convert to AVIF (new folder)`
-  - `Convert to AVIF (remove)`
-- JPEG inputs (`.jpg`, `.jpeg`):
-  - `Convert to WebP`
-  - `Convert to WebP (new folder)`
-  - `Convert to WebP (remove)`
-  - `Convert to AVIF`
-  - `Convert to AVIF (new folder)`
-  - `Convert to AVIF (remove)`
-- WEBP inputs (`.webp`):
-  - `Convert to JPG` / `Convert to AVIF` (+ `new folder` / `remove`)
-- AVIF inputs (`.avif`):
-  - `Convert to JPG` / `Convert to WebP` (+ `new folder` / `remove`)
+- New runtime: `.NET 8`, `Magick.NET`, single-process batch conversion.
+- Shell integration: classic `HKCU` verbs, no admin required.
+- Packaging: self-contained single-file publish plus Inno Setup installer.
+- Legacy path: retained under `legacy/` and mirrored in the original `src/` folder during the migration window.
 
-JPG/WebP/AVIF quality is set to **80**.
+Current repository version: **0.3.3**
 
-## Files
+## Repository Layout
 
-- `src/` - runtime scripts and source-side installer wrappers
-- `build/Build-Installer.ps1` - reproducible build script for `Setup.exe`
-- `installer/installer.iss` - Inno Setup definition for the installer
-- `release/Setup.exe` - compiled end-user installer
-- `README.md`, `LICENSE`, `VERSION` - repository metadata
+- [src-dotnet/ImageConverter.sln](/C:/szmigieldesign/Works/Apps/image-converter/src-dotnet/ImageConverter.sln)
+  - `src/ImageConverter.Core`: formats, requests/results, path logic, safety rules, batch orchestration, Magick.NET transcoder
+  - `src/ImageConverter.Cli`: primary executable, argument parsing, shell batching, logging, notifications
+  - `src/ImageConverter.Shell`: shell menu catalog and registry installer/uninstaller
+  - `tests/ImageConverter.Tests`: unit tests for pathing, safety rules, batch behavior, shell intent generation
+- [build/Build-Installer.ps1](/C:/szmigieldesign/Works/Apps/image-converter/build/Build-Installer.ps1): restore, build, test, publish, then package with Inno Setup
+- [installer/installer.iss](/C:/szmigieldesign/Works/Apps/image-converter/installer/installer.iss): thin installer definition
+- [legacy/](/C:/szmigieldesign/Works/Apps/image-converter/legacy): legacy PowerShell/VBS implementation snapshot
 
-Key scripts inside `src/`:
+## Supported Behavior
 
-- `ConvertPngToJpg.ps1` - converter script
-- `Run-Converter.vbs` - hidden launcher
-- `Run-Converter.ps1` - fallback launcher for environments where `wscript.exe` is blocked
-- `Install-ImageConverter.ps1` - installer that copies the app locally, bootstraps ImageMagick, and registers the context menu
-- `Uninstall-ImageConverter.ps1` - removes the installed files and context menu entries
-- `install-context-menu.ps1` - registers context menu entries for `.png`, `.jpg`, `.jpeg`, `.webp`, `.avif`
-- `uninstall-context-menu.ps1` - removes registered entries
-- `Setup.cmd` - double-click installer wrapper
-- `Uninstall.cmd` - double-click uninstall wrapper
+Source formats:
 
-## Install
+- PNG
+- JPG / JPEG
+- WEBP
+- AVIF
 
-For the public release package, run `release\Setup.exe` and let it handle the rest:
+Target formats:
 
-1. Copies the scripts into `%LOCALAPPDATA%\Programs\PNG-JPG-WebP-AVIF-Converter`
-2. Checks for `pwsh.exe`
-3. Downloads a portable PowerShell 7 runtime into the app folder if `pwsh` is missing
-4. Checks for `magick.exe`
-5. Installs ImageMagick automatically if it is missing
-6. Registers the context menu entries for the current user
+- JPG
+- WEBP
+- AVIF
+- PNG for CLI only
 
-If you prefer to install from source, double-click `src\Setup.cmd` or run:
+Policies:
+
+- Output to same folder or a sibling target-format folder (`JPEG`, `WEBP`, `AVIF`, `PNG`)
+- Existing target handling: `skip`, `suffix`, `overwrite`
+- Remove original only after a verified non-empty output file exists
+- Block lossy-to-lossless conversion such as `jpg -> png`
+- Process multiple files in one run
+- Emit one final shell notification per batch
+
+## Build Prerequisites
+
+- `.NET 8 SDK`
+- `Inno Setup 6` for installer creation
+
+Optional:
+
+- Existing legacy installs should be removed before adopting the new installer if you want a clean transition from the old script-based path.
+
+## Build And Test
+
+Restore, build, and test the solution:
 
 ```powershell
-.\src\Setup.cmd
+dotnet restore .\src-dotnet\ImageConverter.sln --configfile .\src-dotnet\NuGet.Config
+dotnet build .\src-dotnet\ImageConverter.sln -c Release
+dotnet test .\src-dotnet\tests\ImageConverter.Tests\ImageConverter.Tests.csproj -c Release
 ```
 
-This installs entries under current user (`HKCU`), so admin rights are not required.
-
-If your environment blocks `wscript.exe`, install using direct PowerShell launcher mode:
+Publish the runtime and build the installer:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\src\install-context-menu.ps1 -LauncherMode PowerShell
-```
-
-## WebP Requirement
-
-WebP conversion uses `magick.exe` (ImageMagick). Install it and ensure it's in `PATH`, for example:
-
-```powershell
-winget install ImageMagick.ImageMagick
-```
-
-The installer will try to do this automatically.
-
-If `pwsh.exe` is missing, the installer downloads a portable PowerShell 7 runtime into the app folder and the converter uses it on the next run.
-
-To rebuild the installer, run:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
 .\build\Build-Installer.ps1
 ```
 
-## Conversion Behavior
+That script:
 
-- Existing output handling:
-  - Default: `Skip` (if target `.jpg`/`.webp`/`.avif` already exists).
-  - Alternative: `Suffix` (creates `name-1.ext`, `name-2.ext`, ...).
-  - Explicit replace: `-Overwrite`.
-- Output location:
-  - Default: `Same` folder as input.
-  - New mode: `-OutputMode New` writes to a sibling subfolder named `JPEG`, `WEBP`, `AVIF` (or `PNG` for CLI `-Format Png`).
-- `-RemoveOriginal` safety guard:
-  - Original source file is deleted only when output exists and has non-zero size.
-- Transcoding safety rule:
-  - Lossy -> lossless is blocked (e.g. JPG/WEBP/AVIF -> PNG).
-- WebP conversion requires ImageMagick:
-  - If missing, converter shows one clear popup with:
-    - `winget install ImageMagick.ImageMagick`
-- AVIF conversion requires ImageMagick:
-  - If missing, converter shows one clear popup with:
-    - `winget install ImageMagick.ImageMagick`
-- WebP export defaults:
-  - `-strip`, `sRGB`, `8-bit`, `webp:method=6`, `webp:use-sharp-yuv=true`, `webp:alpha-quality=90`.
-- AVIF export defaults:
-  - `-strip`, `sRGB`, `8-bit`, `heic:speed=6`.
-- JPG engine:
-  - Default: `System.Drawing` (GDI+).
-  - Optional consistency mode: `-UseMagickForJpg` (if ImageMagick is installed).
+1. Restores the solution with the repo-local NuGet config.
+2. Builds all projects in `Release`.
+3. Runs the unit tests.
+4. Publishes `ImageConverter.exe` as a self-contained single-file `win-x64` app into `build/publish/win-x64`.
+5. Packages the published output into `release/Setup.exe`.
 
-## Use
+## CLI Usage
 
-1. Select one or more PNG/JPEG/WEBP/AVIF files in File Explorer (or tools that expose shell context menu).
-2. Right-click.
-3. Choose:
-   - `PNG Convert` submenu for PNG files
-   - `JPEG Convert` submenu for JPG/JPEG files
-   - `WEBP Convert` submenu for WEBP files
-   - `AVIF Convert` submenu for AVIF files
-
-Output files are saved next to originals as `.jpg`, `.webp`, or `.avif`.
-You get a single completion popup per burst of conversions (aggregated across parallel invocations to avoid popup spam).
-Run log is written to `%TEMP%\png-converter-context.log`.
-
-## CLI Examples
+From a local build:
 
 ```powershell
-# Default behavior (skip existing output)
-powershell -NoProfile -ExecutionPolicy Bypass -File .\src\ConvertPngToJpg.ps1 image.png
-
-# Add suffix when output exists
-powershell -NoProfile -ExecutionPolicy Bypass -File .\src\ConvertPngToJpg.ps1 -IfExists Suffix image.png
-
-# Force overwrite existing output
-powershell -NoProfile -ExecutionPolicy Bypass -File .\src\ConvertPngToJpg.ps1 -Overwrite image.png
-
-# WebP conversion
-powershell -NoProfile -ExecutionPolicy Bypass -File .\src\ConvertPngToJpg.ps1 -Format Webp image.png
-
-# AVIF conversion
-powershell -NoProfile -ExecutionPolicy Bypass -File .\src\ConvertPngToJpg.ps1 -Format Avif image.png
-
-# New-folder output mode
-powershell -NoProfile -ExecutionPolicy Bypass -File .\src\ConvertPngToJpg.ps1 -Format Webp -OutputMode New image.png
-
-# JPEG to WebP
-powershell -NoProfile -ExecutionPolicy Bypass -File .\src\ConvertPngToJpg.ps1 -Format Webp photo.jpg
-
-# WEBP to AVIF
-powershell -NoProfile -ExecutionPolicy Bypass -File .\src\ConvertPngToJpg.ps1 -Format Avif image.webp
-
-# JPG conversion using ImageMagick (when installed)
-powershell -NoProfile -ExecutionPolicy Bypass -File .\src\ConvertPngToJpg.ps1 -UseMagickForJpg image.png
+.\src-dotnet\src\ImageConverter.Cli\bin\Release\net8.0-windows\ImageConverter.exe convert --to jpg .\image.png
 ```
 
-## Release Notes
-
-### 0.3.3
-
-- Reorganized the repository into `src/`, `build/`, `installer/`, and `release/`.
-- Renamed the typo'd release folder to `release/`.
-- Kept the public build output limited to `release/Setup.exe`.
-
-### 0.3.2
-
-- Added automatic portable PowerShell 7 bootstrap when `pwsh.exe` is missing.
-- Updated runtime launchers to prefer bundled PowerShell 7 when available.
-- Kept the ImageMagick bootstrap flow in the installer.
-
-### 0.3.1
-
-- Added a proper `Setup.exe` installer build via Inno Setup.
-- Added a reproducible `Build-Installer.ps1` build path.
-- Kept the public release package under `release/` for the generated installer.
-
-### 0.3.0
-
-- Added a simple end-user installer entry point via `Setup.cmd`.
-- Added automatic dependency bootstrap for ImageMagick.
-- Added uninstall entry point via `Uninstall.cmd`.
-- Added a distributable `release/` package for public release builds.
-
-### 0.2.1
-
-- Fixed VBS launcher host selection to avoid accidental double execution when a conversion run fails.
-- Added `-auto-orient` before metadata stripping in ImageMagick conversion paths (JPG/WebP/AVIF/PNG via Magick).
-- Improved `IfExists=Skip` behavior to recover from broken zero-byte outputs instead of skipping forever.
-- Added stale notification-state recovery with a single "possible interruption" completion popup.
-- Updated PowerShell launcher path to prefer `pwsh.exe` when available, with host fallback.
-
-### 0.2
-
-- Added AVIF conversion support.
-- Added cross-format transcoding between PNG/JPEG/WEBP/AVIF where sensible.
-- Enforced safety rule: no lossy -> lossless conversions.
-- Added new-folder mode actions in context menus.
-- Added JPEG/WEBP/AVIF specific submenus and format group separators.
-
-### 0.1.1
-
-- Added WebP conversion actions in context menu.
-- WebP export now strips metadata by default.
-- WebP export defaults tuned for web: `sRGB`, `8-bit`, `webp:method=6`, `webp:use-sharp-yuv=true`, `webp:alpha-quality=90`.
-- Improved completion notifications to avoid popup spam for multi-file runs.
-- Added safe output handling (`Skip`/`Suffix`/`-Overwrite`), remove-original guard, submenu grouping with icons, and optional PowerShell launcher mode.
-
-## Uninstall
-
-For a source install, double-click `src\Uninstall.cmd` or run:
+Examples:
 
 ```powershell
-.\src\Uninstall.cmd
+# Skip existing output
+.\ImageConverter.exe convert --to jpg .\image.png
+
+# Write to WEBP sibling folder
+.\ImageConverter.exe convert --to webp --output new .\image.png
+
+# Keep existing output by suffixing
+.\ImageConverter.exe convert --to avif --if-exists suffix .\image.png
+
+# Replace existing output
+.\ImageConverter.exe convert --to jpg --if-exists overwrite .\image.png
+
+# Remove original after success
+.\ImageConverter.exe convert --to webp --remove-original .\image.png
+
+# Convert several files in one process
+.\ImageConverter.exe convert --to avif .\one.png .\two.jpg .\three.webp
+
+# Register Explorer verbs for the current user
+.\ImageConverter.exe register-shell --install-dir "$env:LOCALAPPDATA\Programs\Image Converter"
+
+# Remove Explorer verbs for the current user
+.\ImageConverter.exe unregister-shell
 ```
 
-If you want to remove the context menu directly, run:
+Exit codes:
 
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\src\uninstall-context-menu.ps1
-```
+- `0`: success, including all-skipped runs
+- `1`: one or more file conversions failed
+- `2`: invalid arguments or unsupported request
+- `3`: shell registration or registry access failure
 
-For the public release package, use the standard Windows uninstall entry created by `release\Setup.exe`.
+## Explorer Integration
+
+The new installer registers classic `HKCU` shell verbs for:
+
+- `.png`
+- `.jpg`
+- `.jpeg`
+- `.webp`
+- `.avif`
+
+The menu surface remains format-specific and intentionally close to the old product:
+
+- PNG: JPG / WEBP / AVIF, each with default, `new folder`, and `remove`
+- JPG/JPEG: WEBP / AVIF, each with default, `new folder`, and `remove`
+- WEBP: JPG / AVIF, each with default, `new folder`, and `remove`
+- AVIF: JPG / WEBP, each with default, `new folder`, and `remove`
+
+## Legacy Notes
+
+- The old PowerShell/VBS implementation was preserved under [legacy/](/C:/szmigieldesign/Works/Apps/image-converter/legacy).
+- The original top-level `src/` folder is still retained during the migration window for compatibility and auditability.
+- The new runtime path does not depend on VBS launchers, PowerShell conversion scripts, or install-time downloads.
+
+## Known Risks
+
+- `Magick.NET-Q8-AnyCPU 14.10.4` currently restores with upstream NuGet advisory warnings. The package is pinned for reproducibility, but those advisories should be re-evaluated on the next dependency update cycle.
+- Explorer multi-select batching is handled with a named-pipe owner/forwarder model. Unit tests cover menu intent; Explorer smoke testing should still be done on a real Windows shell session before public release.
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [LICENSE](/C:/szmigieldesign/Works/Apps/image-converter/LICENSE).

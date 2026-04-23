@@ -5,7 +5,15 @@
 *.zip
 release/*.tmp
 release/*.e32*
+release/Setup.exe
+build/publish/
 
 # Editor/system
 .DS_Store
 Thumbs.db
+
+# .NET build output
+src-dotnet/**/bin/
+src-dotnet/**/obj/
+src-dotnet/.nuget/
+src-dotnet/.appdata/

@@ -1,0 +1,13 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\ImageConverter.Core\ImageConverter.Core.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <SupportedOSPlatform>Windows</SupportedOSPlatform>
+    <RootNamespace>ImageConverter.Shell</RootNamespace>
+  </PropertyGroup>
+
+</Project>

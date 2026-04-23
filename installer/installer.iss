@@ -2,18 +2,22 @@
   #define AppVersion "0.3.3"
 #endif
 
-#define AppName "PNG/JPEG/WEBP/AVIF Converter Context Menu Tool"
+#ifndef PublishDir
+  #define PublishDir "..\build\publish\win-x64"
+#endif
+
+#define AppName "Image Converter"
 #define AppPublisher "szmigieldesign"
 #define AppPublisherURL "https://github.com/szmigieldesign/windows-png-to-jpg-webp-context-converter"
 
 [Setup]
-AppId={{A4D5A1B7-38A5-4E6B-9B0B-42C1D4A8A1F0}}
+AppId={{23B20991-7D53-431A-9F94-9D49670E8D16}}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher={#AppPublisher}
 AppPublisherURL={#AppPublisherURL}
-DefaultDirName={localappdata}\Programs\PNG-JPG-WebP-AVIF-Converter
+DefaultDirName={localappdata}\Programs\Image Converter
 DefaultGroupName={#AppName}
 DisableDirPage=yes
 DisableProgramGroupPage=yes
@@ -25,28 +29,20 @@ WizardStyle=modern
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-UninstallDisplayIcon={app}\ConvertPngToJpg.ps1
+UninstallDisplayIcon={app}\ImageConverter.exe
 SetupLogging=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-Source: "..\src\ConvertPngToJpg.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Install-ImageConverter.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\install-context-menu.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\uninstall-context-menu.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Uninstall-ImageConverter.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Run-Converter.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Run-Converter.vbs"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\VERSION"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Setup.cmd"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\src\Uninstall.cmd"; DestDir: "{app}"; Flags: ignoreversion
 
 [Run]
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Install-ImageConverter.ps1"" -NoCopy"; Flags: postinstall runhidden waituntilterminated; StatusMsg: "Configuring ImageMagick and the context menu..."
+Filename: "{app}\ImageConverter.exe"; Parameters: "register-shell --install-dir ""{app}"""; Flags: postinstall runhidden waituntilterminated skipifsilent; StatusMsg: "Registering Explorer context menu entries..."
 
 [UninstallRun]
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\uninstall-context-menu.ps1"""; Flags: runhidden waituntilterminated; RunOnceId: "RemoveContextMenuEntries"
+Filename: "{app}\ImageConverter.exe"; Parameters: "unregister-shell"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveContextMenuEntries"
