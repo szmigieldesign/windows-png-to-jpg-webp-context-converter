@@ -6,6 +6,7 @@
 release/*.tmp
 release/*.e32*
 release/Setup.exe
+legacy/release/Setup.exe
 build/publish/
 
 # Editor/system
@@ -17,3 +18,5 @@ src-dotnet/**/bin/
 src-dotnet/**/obj/
 src-dotnet/.nuget/
 src-dotnet/.appdata/
+src-dotnet/.dotnet/
+src-dotnet/.templateengine/
