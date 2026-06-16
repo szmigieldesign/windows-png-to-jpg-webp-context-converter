@@ -60,22 +60,46 @@ public sealed class WindowsShellRegistrar
 
         foreach (var entry in menu.Entries)
         {
-            using var entryKey = currentUser.CreateSubKey($@"{menuPath}\shell\{entry.Id}", writable: true)
-                ?? throw new InvalidOperationException($"Failed to create registry key for entry: {entry.Id}");
-            using var commandKey = currentUser.CreateSubKey($@"{menuPath}\shell\{entry.Id}\command", writable: true)
-                ?? throw new InvalidOperationException($"Failed to create command key for entry: {entry.Id}");
+            WriteEntry(currentUser, $@"{menuPath}\shell", entry);
+        }
+    }
 
-            entryKey.SetValue(string.Empty, entry.Label, RegistryValueKind.String);
-            entryKey.SetValue("MUIVerb", entry.Label, RegistryValueKind.String);
-            entryKey.SetValue("Icon", entry.Icon, RegistryValueKind.String);
-            entryKey.SetValue("MultiSelectModel", "Player", RegistryValueKind.String);
+    private static void WriteEntry(RegistryKey currentUser, string parentShellPath, ShellMenuEntryDefinition entry)
+    {
+        var entryPath = $@"{parentShellPath}\{entry.Id}";
+        using var entryKey = currentUser.CreateSubKey(entryPath, writable: true)
+            ?? throw new InvalidOperationException($"Failed to create registry key for entry: {entry.Id}");
 
-            if (entry.SeparatorBefore)
+        entryKey.SetValue(string.Empty, entry.Label, RegistryValueKind.String);
+        entryKey.SetValue("MUIVerb", entry.Label, RegistryValueKind.String);
+        entryKey.SetValue("Icon", entry.Icon, RegistryValueKind.String);
+        entryKey.SetValue("MultiSelectModel", "Player", RegistryValueKind.String);
+
+        if (entry.SeparatorBefore)
+        {
+            entryKey.SetValue("CommandFlags", 32, RegistryValueKind.DWord);
+        }
+
+        if (entry.Children is { Count: > 0 } children)
+        {
+            entryKey.SetValue("SubCommands", string.Empty, RegistryValueKind.String);
+            using (var childShellKey = currentUser.CreateSubKey($@"{entryPath}\shell", writable: true))
             {
-                entryKey.SetValue("CommandFlags", 32, RegistryValueKind.DWord);
+                _ = childShellKey ?? throw new InvalidOperationException($"Failed to create shell key for entry: {entry.Id}");
             }
 
-            commandKey.SetValue(string.Empty, entry.Command, RegistryValueKind.String);
+            foreach (var child in children)
+            {
+                WriteEntry(currentUser, $@"{entryPath}\shell", child);
+            }
+
+            return;
         }
+
+        var command = entry.Command
+            ?? throw new InvalidOperationException($"Leaf entry has no command: {entry.Id}");
+        using var commandKey = currentUser.CreateSubKey($@"{entryPath}\command", writable: true)
+            ?? throw new InvalidOperationException($"Failed to create command key for entry: {entry.Id}");
+        commandKey.SetValue(string.Empty, command, RegistryValueKind.String);
     }
 }

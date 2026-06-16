@@ -6,6 +6,8 @@ internal abstract record CliCommand;
 
 internal sealed record HelpCommand : CliCommand;
 
+internal sealed record SelfInstallCommand : CliCommand;
+
 internal sealed record RegisterShellCommand(string? InstallDirectory) : CliCommand;
 
 internal sealed record UnregisterShellCommand : CliCommand;
@@ -26,7 +28,14 @@ internal static class CommandLineParser
         command = new HelpCommand();
         error = null;
 
-        if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
+        // No arguments = launched by double-click from Explorer -> self-install/update the menu.
+        if (args.Length == 0)
+        {
+            command = new SelfInstallCommand();
+            return true;
+        }
+
+        if (args[0] is "-h" or "--help" or "help")
         {
             return true;
         }

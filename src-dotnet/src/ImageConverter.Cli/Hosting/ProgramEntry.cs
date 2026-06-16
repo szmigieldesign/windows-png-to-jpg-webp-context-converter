@@ -22,6 +22,7 @@ internal static class ProgramEntry
             return command switch
             {
                 ConvertCommand convertCommand => await RunConvertAsync(convertCommand).ConfigureAwait(false),
+                SelfInstallCommand => RunSelfInstall(),
                 RegisterShellCommand registerShellCommand => RunRegisterShell(registerShellCommand),
                 UnregisterShellCommand => RunUnregisterShell(),
                 HelpCommand => WriteUsage(null),
@@ -31,6 +32,17 @@ internal static class ProgramEntry
         catch (Exception exception)
         {
             SafeConsoleWrite(Console.Error, $"level=error event=unhandled message=\"{Escape(exception.Message)}\"");
+
+            if (command is SelfInstallCommand)
+            {
+                MessageBox.Show(
+                    $"Could not update the Explorer menu.\n\n{exception.Message}",
+                    "Image Converter",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                return 3;
+            }
+
             return command is RegisterShellCommand or UnregisterShellCommand ? 3 : 1;
         }
     }
@@ -114,6 +126,25 @@ internal static class ProgramEntry
         return result.ExitCode;
     }
 
+    private static int RunSelfInstall()
+    {
+        var executablePath = Environment.ProcessPath
+            ?? throw new InvalidOperationException("Unable to determine the current executable path.");
+
+        var registrar = new WindowsShellRegistrar();
+        registrar.Register(executablePath);
+        SafeConsoleWrite(Console.Out, $"level=info event=self_installed executable=\"{Escape(executablePath)}\"");
+
+        MessageBox.Show(
+            "The Explorer right-click menu has been installed/updated for the current user.\n\n"
+            + "Right-click a PNG, JPG, WEBP or AVIF file and pick a format, quality preset and behavior.",
+            "Image Converter",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
+
+        return 0;
+    }
+
     private static int RunRegisterShell(RegisterShellCommand command)
     {
         var executablePath = ResolveExecutablePath(command.InstallDirectory);
@@ -157,6 +188,9 @@ internal static class ProgramEntry
 
         const string usage = """
 Image Converter
+
+Run with no arguments (or double-click the exe) to install/update the
+Explorer right-click menu for the current user from the exe's own location.
 
 Commands:
   convert --to <jpg|webp|avif|png> --output <same|new> --if-exists <skip|suffix|overwrite> --remove-original --quality <0-100> [--from-shell] <paths...>

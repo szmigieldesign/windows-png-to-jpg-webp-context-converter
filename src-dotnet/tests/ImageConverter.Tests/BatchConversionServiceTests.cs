@@ -73,6 +73,30 @@ public sealed class BatchConversionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task QualityIsPropagatedToTranscoder()
+    {
+        var source = CreateFile("image.png");
+        TranscodeRequest? captured = null;
+        var service = new BatchConversionService(new FakeTranscoder(request =>
+        {
+            captured = request;
+            Directory.CreateDirectory(Path.GetDirectoryName(request.DestinationPath)!);
+            File.WriteAllBytes(request.DestinationPath, [1]);
+        }));
+
+        await service.ConvertAsync(new BatchConversionRequest(
+            [source],
+            ImageFormat.Jpg,
+            OutputMode.SameFolder,
+            FileExistsPolicy.Skip,
+            RemoveOriginal: false,
+            Quality: 95));
+
+        Assert.NotNull(captured);
+        Assert.Equal(95, captured!.Quality);
+    }
+
+    [Fact]
     public async Task BatchSummaryCountsMixedResults()
     {
         var ok = CreateFile("ok.png");

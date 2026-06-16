@@ -11,6 +11,10 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>ImageConverter</AssemblyName>
     <RootNamespace>ImageConverter.Cli</RootNamespace>
+    <!-- Bundle native libs (Magick.Native, WinForms) inside the exe so it is a true
+         single, portable file: drop the exe anywhere and double-click to self-register. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
   </PropertyGroup>
 
 </Project>

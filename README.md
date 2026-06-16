@@ -123,9 +123,20 @@ Exit codes:
 - `2`: invalid arguments or unsupported request
 - `3`: shell registration or registry access failure
 
+## Install / Update (portable, hands-free)
+
+`ImageConverter.exe` is a single self-contained file. To install or update the Explorer
+menu, just **run the exe with no arguments (double-click it)** — it registers the
+right-click menu for the current user, pointing at wherever the exe currently sits. When a
+new version ships, drop the new exe over the old one and double-click it again; the menu is
+rebuilt (old/legacy entries are cleaned first). No admin rights, no installer required.
+
+The `Setup.exe` installer remains available but is now optional — it copies the exe to
+`%LOCALAPPDATA%\Programs\Image Converter` and triggers the same self-registration.
+
 ## Explorer Integration
 
-The new installer registers classic `HKCU` shell verbs for:
+Running the exe registers classic `HKCU` shell verbs for:
 
 - `.png`
 - `.jpg`
@@ -133,12 +144,16 @@ The new installer registers classic `HKCU` shell verbs for:
 - `.webp`
 - `.avif`
 
-The menu surface remains format-specific and intentionally close to the old product:
+The menu is a three-level path — **format → quality preset → behavior**:
 
-- PNG: JPG / WEBP / AVIF, each with default, `new folder`, and `remove`
-- JPG/JPEG: WEBP / AVIF, each with default, `new folder`, and `remove`
-- WEBP: JPG / AVIF, each with default, `new folder`, and `remove`
-- AVIF: JPG / WEBP, each with default, `new folder`, and `remove`
+1. Target format (PNG: JPG / WEBP / AVIF; JPG/JPEG: WEBP / AVIF; WEBP: JPG / AVIF; AVIF: JPG / WEBP)
+2. Quality preset:
+   - `Web (fast)` — quality 75
+   - `Web (quality)` — quality 88
+   - `Storage (premium)` — quality 95
+3. Behavior: `Same folder` / `New folder` / `Remove original`
+
+Each leaf invokes `convert` with the preset's `--quality` value. PNG remains a target only from the CLI.
 
 ## Legacy Notes
 
