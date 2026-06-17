@@ -27,6 +27,13 @@ public sealed class ShellRegistrationPlan
 
 public static class ShellMenuCatalog
 {
+    /// <summary>
+    /// Dedicated HKCU\Software\Classes namespace that holds the cascade-holder keys
+    /// referenced by ExtendedSubCommandsKey. Kept separate from the file-association
+    /// verbs so each flyout points at its own holder (required for multi-level nesting).
+    /// </summary>
+    public const string ContextMenuNamespacePath = @"Software\Classes\ImageConverter.Menu";
+
     private const string ParentMenuIcon = @"%SystemRoot%\System32\imageres.dll,-70";
     private const string JpegIcon = @"%SystemRoot%\System32\imageres.dll,-72";
     private const string ModernIcon = @"%SystemRoot%\System32\imageres.dll,-71";
@@ -78,6 +85,7 @@ public static class ShellMenuCatalog
     public static IReadOnlyList<string> BuildCleanupKeyPaths() =>
     [
         .. MenuTemplates.Select(template => $@"Software\Classes\SystemFileAssociations\{template.Extension}\shell\{template.MenuKey}"),
+        ContextMenuNamespacePath,
         .. BuildLegacyCleanupKeys()
     ];
 

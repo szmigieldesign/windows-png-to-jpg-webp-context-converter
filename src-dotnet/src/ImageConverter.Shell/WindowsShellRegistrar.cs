@@ -30,6 +30,14 @@ public sealed class WindowsShellRegistrar
         }
     }
 
+    private static string ToClassesRelative(string fullClassesPath)
+    {
+        const string prefix = @"Software\Classes\";
+        return fullClassesPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? fullClassesPath[prefix.Length..]
+            : fullClassesPath;
+    }
+
     private static void DeleteNestedSubKeyTree(RegistryKey root, string path)
     {
         var lastSep = path.LastIndexOf('\\');
@@ -49,56 +57,66 @@ public sealed class WindowsShellRegistrar
 
         using var menuKey = currentUser.CreateSubKey(menuPath, writable: true)
             ?? throw new InvalidOperationException($"Failed to create registry key: {menuPath}");
-        using var shellKey = currentUser.CreateSubKey($@"{menuPath}\shell", writable: true)
-            ?? throw new InvalidOperationException($"Failed to create registry key: {menuPath}\\shell");
 
         menuKey.SetValue("MUIVerb", menu.MenuLabel, RegistryValueKind.String);
         menuKey.SetValue("Icon", menu.MenuIcon, RegistryValueKind.String);
         menuKey.SetValue("MultiSelectModel", "Player", RegistryValueKind.String);
-        menuKey.SetValue("SubCommands", string.Empty, RegistryValueKind.String);
         menuKey.SetValue("CommandFlags", 32, RegistryValueKind.DWord);
 
-        foreach (var entry in menu.Entries)
+        // The flyout's children live in a *separate* cascade-holder key under the
+        // ImageConverter.Menu namespace; ExtendedSubCommandsKey points the verb at it.
+        // (A verb pointing ExtendedSubCommandsKey at its own \shell does not nest past
+        // one level.) Each holder's children can again point at deeper holders, which is
+        // what makes format -> preset -> behavior render.
+        var holderId = menu.MenuKey;
+        menuKey.SetValue("ExtendedSubCommandsKey", ToClassesRelative(HolderPath(holderId)), RegistryValueKind.String);
+        BuildHolder(currentUser, holderId, menu.Entries);
+    }
+
+    private static string HolderPath(string holderId) =>
+        $@"{ShellMenuCatalog.ContextMenuNamespacePath}\{holderId}";
+
+    private static void BuildHolder(RegistryKey currentUser, string holderId, IReadOnlyList<ShellMenuEntryDefinition> entries)
+    {
+        var shellPath = $@"{HolderPath(holderId)}\shell";
+        using (var shellKey = currentUser.CreateSubKey(shellPath, writable: true))
         {
-            WriteEntry(currentUser, $@"{menuPath}\shell", entry);
+            _ = shellKey ?? throw new InvalidOperationException($"Failed to create holder shell key: {shellPath}");
+        }
+
+        foreach (var entry in entries)
+        {
+            WriteNode(currentUser, holderId, shellPath, entry);
         }
     }
 
-    private static void WriteEntry(RegistryKey currentUser, string parentShellPath, ShellMenuEntryDefinition entry)
+    private static void WriteNode(RegistryKey currentUser, string holderId, string parentShellPath, ShellMenuEntryDefinition entry)
     {
-        var entryPath = $@"{parentShellPath}\{entry.Id}";
-        using var entryKey = currentUser.CreateSubKey(entryPath, writable: true)
+        var verbPath = $@"{parentShellPath}\{entry.Id}";
+        using var verbKey = currentUser.CreateSubKey(verbPath, writable: true)
             ?? throw new InvalidOperationException($"Failed to create registry key for entry: {entry.Id}");
 
-        entryKey.SetValue(string.Empty, entry.Label, RegistryValueKind.String);
-        entryKey.SetValue("MUIVerb", entry.Label, RegistryValueKind.String);
-        entryKey.SetValue("Icon", entry.Icon, RegistryValueKind.String);
-        entryKey.SetValue("MultiSelectModel", "Player", RegistryValueKind.String);
+        verbKey.SetValue(string.Empty, entry.Label, RegistryValueKind.String);
+        verbKey.SetValue("MUIVerb", entry.Label, RegistryValueKind.String);
+        verbKey.SetValue("Icon", entry.Icon, RegistryValueKind.String);
+        verbKey.SetValue("MultiSelectModel", "Player", RegistryValueKind.String);
 
         if (entry.SeparatorBefore)
         {
-            entryKey.SetValue("CommandFlags", 32, RegistryValueKind.DWord);
+            verbKey.SetValue("CommandFlags", 32, RegistryValueKind.DWord);
         }
 
         if (entry.Children is { Count: > 0 } children)
         {
-            entryKey.SetValue("SubCommands", string.Empty, RegistryValueKind.String);
-            using (var childShellKey = currentUser.CreateSubKey($@"{entryPath}\shell", writable: true))
-            {
-                _ = childShellKey ?? throw new InvalidOperationException($"Failed to create shell key for entry: {entry.Id}");
-            }
-
-            foreach (var child in children)
-            {
-                WriteEntry(currentUser, $@"{entryPath}\shell", child);
-            }
-
+            var childHolderId = $"{holderId}__{entry.Id}";
+            verbKey.SetValue("ExtendedSubCommandsKey", ToClassesRelative(HolderPath(childHolderId)), RegistryValueKind.String);
+            BuildHolder(currentUser, childHolderId, children);
             return;
         }
 
         var command = entry.Command
             ?? throw new InvalidOperationException($"Leaf entry has no command: {entry.Id}");
-        using var commandKey = currentUser.CreateSubKey($@"{entryPath}\command", writable: true)
+        using var commandKey = currentUser.CreateSubKey($@"{verbPath}\command", writable: true)
             ?? throw new InvalidOperationException($"Failed to create command key for entry: {entry.Id}");
         commandKey.SetValue(string.Empty, command, RegistryValueKind.String);
     }
